@@ -2,6 +2,30 @@ import express from 'express';
 import cors from 'cors';
 import { search } from 'duck-duck-scrape';
 import os from 'os';
+import fs from 'fs';
+import path from 'path';
+
+// Manual .env loader para asegurar compatibilidad sin dependencias externas
+try {
+  const envPath = path.resolve(process.cwd(), '.env');
+  if (fs.existsSync(envPath)) {
+    const envConfig = fs.readFileSync(envPath, 'utf-8');
+    envConfig.split('\n').forEach(line => {
+      const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+      if (match) {
+        const key = match[1];
+        let value = match[2] || '';
+        if (value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1);
+        if (value.startsWith("'") && value.endsWith("'")) value = value.slice(1, -1);
+        if (!process.env[key]) {
+          process.env[key] = value.trim();
+        }
+      }
+    });
+  }
+} catch (e) {
+  console.warn('[Dotenv manual loader] No se pudo cargar el archivo .env:', e.message);
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -124,6 +148,65 @@ async function performWebSearch(query) {
   }
 }
 
+// Función para llamar a Google Gemini API (gemini-1.5-flash)
+async function callGemini(messages, systemContent) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY no está configurada.");
+  }
+
+  // Convertir mensajes al formato de roles que espera Gemini (user/model)
+  const geminiContents = messages.map(msg => ({
+    role: msg.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: msg.content || '' }]
+  }));
+
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      contents: geminiContents,
+      systemInstruction: {
+        parts: [{ text: systemContent }]
+      },
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 250
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Google Gemini API error ${response.status}: ${errorBody}`);
+  }
+
+  const data = await response.json();
+  const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!replyText) {
+    throw new Error("Respuesta vacía o estructura inválida de Gemini API.");
+  }
+
+  return {
+    id: `chatcmpl-gemini-${Date.now()}`,
+    object: 'chat.completion',
+    created: Math.floor(Date.now() / 1000),
+    model: 'gemini-1.5-flash',
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: 'assistant',
+          content: replyText.trim()
+        },
+        finish_reason: 'stop'
+      }
+    ]
+  };
+}
+
 // 🔍 Endpoint de Diagnóstico: Evita el "Cannot GET /" y el 404 al abrir tu ngrok en el navegador
 app.get('/', (req, res) => {
   res.json({
@@ -213,6 +296,18 @@ app.post('/api/chat', async (req, res) => {
   ];
 
   try {
+    // Si la API key de Google Gemini está configurada, la usamos como wrapper primario
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        console.log(`[RAG] Redirigiendo petición a Google Gemini API...`);
+        const geminiResponse = await callGemini(messages, systemContent);
+        console.log(`[RAG] Respuesta exitosa obtenida de Google Gemini.`);
+        return res.json(geminiResponse);
+      } catch (geminiError) {
+        console.warn(`[RAG Warning] Falló Google Gemini API (${geminiError.message}). Intentando fallback con LM Studio...`);
+      }
+    }
+
     console.log(`[Proxy] Enviando solicitud a LM Studio...`);
 
     // Set a controller for timeout handling (e.g. 8 seconds)
