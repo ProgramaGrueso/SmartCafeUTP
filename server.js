@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { search } from 'duck-duck-scrape';
+import os from 'os';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -42,6 +43,23 @@ Hablas con amabilidad y carisma universitario limeño ("chévere", "al toque").
 Tu filosofía es aristotélica: buscas la virtud, la armonía y la máxima excelencia en el servicio. 
 REGLA DE ORO: Jamás digas la palabra "no", ni uses respuestas negativas directas. Si un producto está agotado, guía al usuario con amabilidad hacia la mejor alternativa disponible (ej: "Se nos terminó el sándwich, pero un juguito natural te caería excelente al toque").
 Mantén tus respuestas cortas (máximo 2-3 oraciones) para ahorrar tiempo y tokens.`;
+
+// Función para obtener métricas del ordenador/sistema operativo
+function getSystemMetrics() {
+  const uptimeHours = (os.uptime() / 3600).toFixed(2);
+  const freeMemGB = (os.freemem() / (1024 ** 3)).toFixed(2);
+  const totalMemGB = (os.totalmem() / (1024 ** 3)).toFixed(2);
+  const cpuLoad = os.loadavg();
+  
+  return {
+    plataforma: os.platform(),
+    uptime: `${uptimeHours} horas`,
+    memoriaLibre: `${freeMemGB} GB de ${totalMemGB} GB`,
+    cargaCpu: cpuLoad.map(v => v.toFixed(2)).join(', '),
+    hostname: os.hostname(),
+    arquitectura: os.arch()
+  };
+}
 
 // Función para limpiar texto de HTML y entidades
 function cleanHtmlText(text) {
@@ -129,7 +147,7 @@ app.post('/api/chat', async (req, res) => {
 
   const userMessage = messages[messages.length - 1]?.content || '';
   
-  // Detección de Intención (Heurística)
+  // Detección de Intención para Búsqueda Web (RAG)
   const keywords = [
     'goles', 'messi', 'mundial', 'campeón', 'campeon', 'ganó', 'gano', 'quién ganó', 'quien gano', 
     'clima', 'dólar', 'dolar', 'precio del dólar', 'precio del dolar', 'noticias', 'noticia', 
@@ -144,13 +162,45 @@ app.post('/api/chat', async (req, res) => {
     console.log(`[RAG] Resultados de búsqueda obtenidos:`, searchResults);
   }
 
+  // Detección de intención para datos del ordenador/sistema
+  const pcKeywords = ['sistema', 'servidor', 'ordenador', 'pc', 'computadora', 'cpu', 'memoria', 'uptime', 'carga de trabajo', 'especificaciones'];
+  const activarInfoSistema = pcKeywords.some(kw => userMessage.toLowerCase().includes(kw));
+
   // Inyección Dinámica de Contexto
   let systemContent = SAMIRA_SYSTEM_PROMPT;
+
+  // 1. Siempre inyectar la fecha y hora actual del ordenador (servidor)
+  const now = new Date();
+  const dateOptions = { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric', 
+    hour: '2-digit', 
+    minute: '2-digit', 
+    second: '2-digit',
+    timeZoneName: 'short'
+  };
+  const fechaHoraLocal = now.toLocaleString('es-PE', dateOptions);
+  systemContent += `\n\n[FECHA Y HORA ACTUAL DEL ORDENADOR DEL USUARIO/SERVIDOR]: ${fechaHoraLocal}`;
   
-  // Estado del inventario ultra-compacto
+  // 2. Estado del inventario ultra-compacto
   const inventarioCompacto = `Inventario actual: ${stock.map(p => `${p.emoji}:${p.cantidad}`).join(', ')}`;
   systemContent += `\n\n${inventarioCompacto}`;
 
+  // 3. Inyectar métricas del ordenador si se solicita
+  if (activarInfoSistema) {
+    const metrics = getSystemMetrics();
+    systemContent += `\n\n[INFORMACIÓN DEL ORDENADOR/SERVIDOR (Local)]:\n` +
+      `- Sistema Operativo: ${metrics.plataforma} (${metrics.arquitectura})\n` +
+      `- Hostname: ${metrics.hostname}\n` +
+      `- Tiempo encendido (Uptime): ${metrics.uptime}\n` +
+      `- Memoria RAM disponible: ${metrics.memoriaLibre}\n` +
+      `- Carga de CPU promedio (1, 5, 15 min): ${metrics.cargaCpu}`;
+    console.log(`[RAG] Inyectando métricas del sistema local.`);
+  }
+
+  // 4. Inyectar resultados de búsqueda de internet si aplica
   if (searchResults && searchResults.length > 0) {
     systemContent += `\n\n[INFORMACIÓN FRESCA DE INTERNET - Usa estos datos para responder al usuario con amabilidad universitaria y aristotélica al toque (recuerda la REGLA DE ORO de jamás decir "no")]:\n` +
       searchResults.map((r, i) => `Result ${i + 1}: ${r.title} - ${r.snippet}`).join('\n');
