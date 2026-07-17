@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { search } from 'duck-duck-scrape';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -42,6 +43,69 @@ Tu filosofía es aristotélica: buscas la virtud, la armonía y la máxima excel
 REGLA DE ORO: Jamás digas la palabra "no", ni uses respuestas negativas directas. Si un producto está agotado, guía al usuario con amabilidad hacia la mejor alternativa disponible (ej: "Se nos terminó el sándwich, pero un juguito natural te caería excelente al toque").
 Mantén tus respuestas cortas (máximo 2-3 oraciones) para ahorrar tiempo y tokens.`;
 
+// Función para limpiar texto de HTML y entidades
+function cleanHtmlText(text) {
+  if (!text) return '';
+  return text
+    .replace(/<[^>]*>/g, '') // Elimina etiquetas HTML
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, '/')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Búsqueda en DuckDuckGo con fallback directo a HTML (resiliente a bloqueos de bots)
+async function performWebSearch(query) {
+  try {
+    console.log(`[RAG] Intentando buscar en DuckDuckGo con duck-duck-scrape para: "${query}"...`);
+    const searchRes = await search(query, {}, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+    if (searchRes && searchRes.results && searchRes.results.length > 0) {
+      return searchRes.results.slice(0, 2).map(r => ({
+        title: r.title || '',
+        snippet: r.description || ''
+      }));
+    }
+  } catch (error) {
+    console.warn(`[RAG Warning] Falló duck-duck-scrape (${error.message}). Usando fallback directo HTML...`);
+  }
+
+  // Fallback directo HTML robusto
+  try {
+    const response = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+    if (!response.ok) {
+      throw new Error(`Error HTTP: ${response.status}`);
+    }
+    const html = await response.text();
+    const titles = [...html.matchAll(/<h2[^>]*class=\"result__title\"[^>]*>.*?<a[^>]*class=\"result__a\"[^>]*>(.*?)<\/a>/gs)].map(m => m[1]);
+    const snippets = [...html.matchAll(/<a[^>]*class=\"result__snippet\"[^>]*>(.*?)<\/a>/gs)].map(m => m[1]);
+    
+    const results = [];
+    for (let i = 0; i < Math.min(titles.length, snippets.length); i++) {
+      results.push({
+        title: cleanHtmlText(titles[i]),
+        snippet: cleanHtmlText(snippets[i])
+      });
+    }
+    return results.slice(0, 2);
+  } catch (fallbackError) {
+    console.error(`[RAG Error] El fallback directo HTML también falló:`, fallbackError);
+    return [];
+  }
+}
+
 // 🔍 Endpoint de Diagnóstico: Evita el "Cannot GET /" y el 404 al abrir tu ngrok en el navegador
 app.get('/', (req, res) => {
   res.json({
@@ -63,9 +127,38 @@ app.post('/api/chat', async (req, res) => {
     return res.status(400).json({ error: 'Falta o es inválido el array "messages" en el cuerpo.' });
   }
 
-  // Prepend the System Prompt to enforce Samira's persona
+  const userMessage = messages[messages.length - 1]?.content || '';
+  
+  // Detección de Intención (Heurística)
+  const keywords = [
+    'goles', 'messi', 'mundial', 'campeón', 'campeon', 'ganó', 'gano', 'quién ganó', 'quien gano', 
+    'clima', 'dólar', 'dolar', 'precio del dólar', 'precio del dolar', 'noticias', 'noticia', 
+    'hoy', 'actualidad', 'resultado', 'resultados', 'temperatura', 'estadísticas', 'estadisticas'
+  ];
+  const activarBusqueda = keywords.some(kw => userMessage.toLowerCase().includes(kw));
+
+  let searchResults = [];
+  if (activarBusqueda) {
+    console.log(`[RAG] Detección de intención en tiempo real activada por: "${userMessage}"`);
+    searchResults = await performWebSearch(userMessage);
+    console.log(`[RAG] Resultados de búsqueda obtenidos:`, searchResults);
+  }
+
+  // Inyección Dinámica de Contexto
+  let systemContent = SAMIRA_SYSTEM_PROMPT;
+  
+  // Estado del inventario ultra-compacto
+  const inventarioCompacto = `Inventario actual: ${stock.map(p => `${p.emoji}:${p.cantidad}`).join(', ')}`;
+  systemContent += `\n\n${inventarioCompacto}`;
+
+  if (searchResults && searchResults.length > 0) {
+    systemContent += `\n\n[INFORMACIÓN FRESCA DE INTERNET - Usa estos datos para responder al usuario con amabilidad universitaria y aristotélica al toque (recuerda la REGLA DE ORO de jamás decir "no")]:\n` +
+      searchResults.map((r, i) => `Result ${i + 1}: ${r.title} - ${r.snippet}`).join('\n');
+  }
+
+  // Prepend the combined system prompt
   const formattedMessages = [
-    { role: 'system', content: SAMIRA_SYSTEM_PROMPT },
+    { role: 'system', content: systemContent },
     ...messages
   ];
 

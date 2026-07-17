@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "cors": "^2.8.6",
+    "duck-duck-scrape": "^2.2.7",
     "express": "^5.2.1",
     "lucide-react": "^1.24.0",
     "react": "^19.2.7",
