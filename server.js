@@ -153,63 +153,33 @@ async function performWebSearch(query) {
   }
 }
 
-// Función para llamar a Google Gemini API (gemini-2.5-flash)
-async function callGemini(messages, systemContent) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY no está configurada.");
+// Función para obtener clima real de Lima usando Open-Meteo (sin token)
+async function getLimaWeather() {
+  try {
+    const response = await fetch('https://api.open-meteo.com/v1/forecast?latitude=-12.046&longitude=-77.043&current=temperature_2m,relative_humidity_2m');
+    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+    const data = await response.json();
+    return {
+      temperatura: data.current.temperature_2m,
+      humedad: data.current.relative_humidity_2m
+    };
+  } catch (error) {
+    console.error('[Weather API Error] No se pudo obtener el clima:', error.message);
+    return null;
   }
+}
 
-  // Convertir mensajes al formato de roles que espera Gemini (user/model)
-  const geminiContents = messages.map(msg => ({
-    role: msg.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: msg.content || '' }]
-  }));
-
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      contents: geminiContents,
-      systemInstruction: {
-        parts: [{ text: systemContent }]
-      },
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 250
-      }
-    })
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Google Gemini API error ${response.status}: ${errorBody}`);
+// Función para obtener tipo de cambio USD/PEN real usando API abierta
+async function getUsdPenRate() {
+  try {
+    const response = await fetch('https://open.er-api.com/v6/latest/USD');
+    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+    const data = await response.json();
+    return data.rates.PEN;
+  } catch (error) {
+    console.error('[Exchange API Error] No se pudo obtener tipo de cambio:', error.message);
+    return null;
   }
-
-  const data = await response.json();
-  const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!replyText) {
-    throw new Error("Respuesta vacía o estructura inválida de Gemini API.");
-  }
-
-  return {
-    id: `chatcmpl-gemini-${Date.now()}`,
-    object: 'chat.completion',
-    created: Math.floor(Date.now() / 1000),
-    model: 'gemini-2.5-flash',
-    choices: [
-      {
-        index: 0,
-        message: {
-          role: 'assistant',
-          content: replyText.trim()
-        },
-        finish_reason: 'stop'
-      }
-    ]
-  };
 }
 
 // 🔍 Endpoint de Diagnóstico: Evita el "Cannot GET /" y el 404 al abrir tu ngrok en el navegador
@@ -234,25 +204,50 @@ app.post('/api/chat', async (req, res) => {
   }
 
   const userMessage = messages[messages.length - 1]?.content || '';
-  
-  // Detección de Intención para Búsqueda Web (RAG)
-  const keywords = [
-    'goles', 'messi', 'mundial', 'campeón', 'campeon', 'ganó', 'gano', 'quién ganó', 'quien gano', 
-    'clima', 'dólar', 'dolar', 'precio del dólar', 'precio del dolar', 'noticias', 'noticia', 
-    'hoy', 'actualidad', 'resultado', 'resultados', 'temperatura', 'estadísticas', 'estadisticas'
-  ];
-  const activarBusqueda = keywords.some(kw => userMessage.toLowerCase().includes(kw));
+  const cleanMsg = userMessage.toLowerCase().trim();
 
-  let searchResults = [];
-  if (activarBusqueda) {
-    console.log(`[RAG] Detección de intención en tiempo real activada por: "${userMessage}"`);
-    searchResults = await performWebSearch(userMessage);
-    console.log(`[RAG] Resultados de búsqueda obtenidos:`, searchResults);
-  }
+  // Detección de Intenciones para RAG
+  const weatherKeywords = ['clima', 'temperatura', 'frío', 'frio', 'calor', 'humedad', 'llovizna', 'tiempo de hoy'];
+  const activarClima = weatherKeywords.some(kw => cleanMsg.includes(kw));
+
+  const currencyKeywords = ['dolar', 'dólar', 'tipo de cambio', 'cambio de moneda', 'soles', 'pen', 'divisa', 'cambio'];
+  const activarCambio = currencyKeywords.some(kw => cleanMsg.includes(kw));
+
+  const searchKeywords = [
+    'goles', 'messi', 'mundial', 'campeón', 'campeon', 'ganó', 'gano', 'quién ganó', 'quien gano', 
+    'noticias', 'noticia', 'hoy', 'actualidad', 'resultado', 'resultados', 'estadísticas', 'estadisticas',
+    'dni', 'ruc', 'buscar', 'quien es', 'quién es', 'definición', 'definicion', 'que pasó', 'que paso'
+  ];
+  const activarBusqueda = searchKeywords.some(kw => cleanMsg.includes(kw));
 
   // Detección de intención para datos del ordenador/sistema
   const pcKeywords = ['sistema', 'servidor', 'ordenador', 'pc', 'computadora', 'cpu', 'memoria', 'uptime', 'carga de trabajo', 'especificaciones'];
-  const activarInfoSistema = pcKeywords.some(kw => userMessage.toLowerCase().includes(kw));
+  const activarInfoSistema = pcKeywords.some(kw => cleanMsg.includes(kw));
+
+  // Obtención paralela de datos (RAG)
+  let weatherData = null;
+  let usdPenRate = null;
+  let searchResults = [];
+
+  try {
+    const promises = [];
+    if (activarClima) {
+      promises.push(getLimaWeather().then(res => weatherData = res));
+    }
+    if (activarCambio) {
+      promises.push(getUsdPenRate().then(res => usdPenRate = res));
+    }
+    if (activarBusqueda) {
+      console.log(`[RAG] Detección de intención en tiempo real activada por: "${userMessage}"`);
+      promises.push(performWebSearch(userMessage).then(res => searchResults = res));
+    }
+    
+    if (promises.length > 0) {
+      await Promise.all(promises);
+    }
+  } catch (ragErr) {
+    console.warn('[RAG Warning] Ocurrió un error obteniendo datos RAG:', ragErr.message);
+  }
 
   // Inyección Dinámica de Contexto
   let systemContent = SAMIRA_SYSTEM_PROMPT;
@@ -288,7 +283,20 @@ app.post('/api/chat', async (req, res) => {
     console.log(`[RAG] Inyectando métricas del sistema local.`);
   }
 
-  // 4. Inyectar resultados de búsqueda de internet si aplica
+  // 4. Inyectar clima en tiempo real si aplica
+  if (weatherData) {
+    systemContent += `\n\n[CLIMA EN TIEMPO REAL - LIMA, PERÚ (API de Open-Meteo)]:\n` +
+      `- Temperatura actual: ${weatherData.temperatura} °C\n` +
+      `- Humedad relativa: ${weatherData.humedad}%`;
+  }
+
+  // 5. Inyectar tipo de cambio en tiempo real si aplica
+  if (usdPenRate) {
+    systemContent += `\n\n[TIPO DE CAMBIO EN TIEMPO REAL - USD/PEN (API de OpenExchangeRates)]:\n` +
+      `- 1 Dólar Estadounidense (USD) equivale a: ${usdPenRate.toFixed(4)} Soles Peruanos (PEN)`;
+  }
+
+  // 6. Inyectar resultados de búsqueda de internet si aplica (noticias, goles, DNI, etc.)
   if (searchResults && searchResults.length > 0) {
     systemContent += `\n\n[INFORMACIÓN FRESCA DE INTERNET - Usa estos datos para responder al usuario con amabilidad universitaria y aristotélica al toque (recuerda la REGLA DE ORO de jamás decir "no")]:\n` +
       searchResults.map((r, i) => `Result ${i + 1}: ${r.title} - ${r.snippet}`).join('\n');
@@ -301,18 +309,6 @@ app.post('/api/chat', async (req, res) => {
   ];
 
   try {
-    // Si la API key de Google Gemini está configurada, la usamos como wrapper primario
-    if (process.env.GEMINI_API_KEY) {
-      try {
-        console.log(`[RAG] Redirigiendo petición a Google Gemini API...`);
-        const geminiResponse = await callGemini(messages, systemContent);
-        console.log(`[RAG] Respuesta exitosa obtenida de Google Gemini.`);
-        return res.json(geminiResponse);
-      } catch (geminiError) {
-        console.warn(`[RAG Warning] Falló Google Gemini API (${geminiError.message}). Intentando fallback con LM Studio...`);
-      }
-    }
-
     console.log(`[Proxy] Enviando solicitud a LM Studio...`);
 
     // Set a controller for timeout handling (e.g. 8 seconds)
