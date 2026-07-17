@@ -316,6 +316,11 @@ app.post('/api/chat', async (req, res) => {
       searchResults.map((r, i) => `Result ${i + 1}: ${r.title} - ${r.snippet}`).join('\n');
   }
 
+  // 7. Inyectar instrucción especial si el usuario envía una imagen (visión)
+  if (hasImage) {
+    systemContent += `\n\n[INSTRUCCIÓN DE VISIÓN - El usuario ha adjuntado una imagen en su mensaje. Describe la imagen detalladamente y responde a su petición al toque. Evita las repreguntas de terapeuta/ELIZA en esta respuesta y enfócate en lo que se ve en la imagen con amabilidad limeña.]`;
+  }
+
   // Prepend the combined system prompt
   const formattedMessages = [
     { role: 'system', content: systemContent },
