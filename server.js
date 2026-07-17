@@ -36,7 +36,8 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // 🛡️ MIDDLEWARE SALVAVIDAS: Corrige automáticamente doble barra (//) en las peticiones del frontend
 app.use((req, res, next) => {
