@@ -239,7 +239,7 @@ export const Dashboard: React.FC = () => {
             <div className="relative shrink-0">
               <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white/60 shadow-md">
                 <ImageWithFallback
-                  src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&auto=format&fit=crop&q=60" // Placeholder for Samira avatar
+                  src="/samira_avatar.jpg" // Placeholder for Samira avatar
                   alt="Samira"
                   className="w-full h-full object-cover"
                 />

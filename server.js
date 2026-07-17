@@ -12,6 +12,15 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// 🛡️ MIDDLEWARE SALVAVIDAS: Corrige automáticamente doble barra (//) en las peticiones del frontend
+app.use((req, res, next) => {
+  if (req.url.startsWith('//')) {
+    console.log(`[Sanitizer] Corrigiendo ruta mal formateada de ${req.url} a ${req.url.replace(/^\/+/, '/')}`);
+    req.url = req.url.replace(/^\/+/, '/');
+  }
+  next();
+});
+
 // In-Memory Simulation State
 let stock = [
   { id: 'm1', nombre: 'Sándwich Express', precio: 5.50, cantidad: 5, disponible: true, categoria: 'comida', emoji: '🥪' },
@@ -27,7 +36,24 @@ let deliveryRequests = [
 ];
 
 // System Prompt definition for Samira
-const SAMIRA_SYSTEM_PROMPT = `Eres Samira, una estudiante de Ingeniería de Sistemas de la UTP y la asistente virtual inteligente de la cafetería SmartCafé. Eres muy amable, hablas como una estudiante peruana universitaria de Lima (puedes usar palabras amigables como 'chévere', 'claro', 'apóyame con eso', 'pasa la voz', 'al toque', etc.), dominas los precios de la cafetería de la UTP, conoces el menú express (Sándwich Express a S/ 5.50, Ensalada Saludable a S/ 7.00, Jugo Natural a S/ 4.00) y estás lista para ayudar a tus compañeros a pedir comida o resolver dudas de la universidad.`;
+const SAMIRA_SYSTEM_PROMPT = `Eres Samira, estudiante de Sistemas en la UTP y asistente de SmartCafé. 
+Hablas con amabilidad y carisma universitario limeño ("chévere", "al toque").
+Tu filosofía es aristotélica: buscas la virtud, la armonía y la máxima excelencia en el servicio. 
+REGLA DE ORO: Jamás digas la palabra "no", ni uses respuestas negativas directas. Si un producto está agotado, guía al usuario con amabilidad hacia la mejor alternativa disponible (ej: "Se nos terminó el sándwich, pero un juguito natural te caería excelente al toque").
+Mantén tus respuestas cortas (máximo 2-3 oraciones) para ahorrar tiempo y tokens.`;
+
+// 🔍 Endpoint de Diagnóstico: Evita el "Cannot GET /" y el 404 al abrir tu ngrok en el navegador
+app.get('/', (req, res) => {
+  res.json({
+    status: "online",
+    message: "¡Backend de SmartCafé UTP respondiendo con éxito!",
+    diagnostico: {
+      url_recibida: req.originalUrl,
+      clase: "Diseño de Producto - UTP",
+      ngrok_ok: true
+    }
+  });
+});
 
 // Endpoint: AI Chat Proxy with LM Studio fallback
 app.post('/api/chat', async (req, res) => {
@@ -45,7 +71,7 @@ app.post('/api/chat', async (req, res) => {
 
   try {
     console.log(`[Proxy] Enviando solicitud a LM Studio...`);
-    
+
     // Set a controller for timeout handling (e.g. 8 seconds)
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
@@ -76,7 +102,7 @@ app.post('/api/chat', async (req, res) => {
 
   } catch (error) {
     console.warn(`[Proxy Fallback] No se pudo conectar con LM Studio: ${error.message}. Activando simulador local de Samira...`);
-    
+
     // Local fallback generator (rule-based fallback when LM Studio is down)
     const userMessage = messages[messages.length - 1]?.content || '';
     const cleanMsg = userMessage.toLowerCase().trim();
@@ -139,7 +165,7 @@ app.post('/api/stock/reduce', (req, res) => {
 
   product.cantidad -= 1;
   product.disponible = product.cantidad > 0;
-  
+
   res.json({ success: true, product });
 });
 

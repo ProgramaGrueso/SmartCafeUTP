@@ -60,7 +60,7 @@ export const AIChat: React.FC = () => {
           <div className="relative">
             <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white/40 bg-purple-100">
               <ImageWithFallback
-                src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&auto=format&fit=crop&q=60" // Samira avatar
+                src="/samira_avatar.jpg" // Samira avatar
                 alt="Samira"
                 className="w-full h-full object-cover"
               />
@@ -92,7 +92,7 @@ export const AIChat: React.FC = () => {
         <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm flex gap-3.5 items-start">
           <div className="w-14 h-14 rounded-2xl overflow-hidden bg-purple-100 shrink-0 border border-purple-200 shadow-inner">
             <ImageWithFallback
-              src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=60" // High fidelity cute anime/illustration style avatar represent
+              src="/samira_avatar2.jpg" // High fidelity cute anime/illustration style avatar represent
               alt="Samira Profile"
               className="w-full h-full object-cover"
             />
@@ -117,7 +117,7 @@ export const AIChat: React.FC = () => {
             {!msg.isUser && (
               <div className="w-8 h-8 rounded-full overflow-hidden bg-purple-100 border border-purple-200 shrink-0 shadow-sm mt-0.5">
                 <ImageWithFallback
-                  src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&auto=format&fit=crop&q=60"
+                  src="/samira_avatar.jpg"
                   alt="Samira thumbnail"
                   className="w-full h-full object-cover"
                 />
@@ -148,7 +148,7 @@ export const AIChat: React.FC = () => {
           <div className="flex gap-2.5 max-w-[85%] mr-auto items-center animate-pulse">
             <div className="w-8 h-8 rounded-full overflow-hidden bg-purple-100 border border-purple-200 shrink-0">
               <ImageWithFallback
-                src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&auto=format&fit=crop&q=60"
+                src="/samira_avatar.jpg"
                 alt="Samira thumbnail"
                 className="w-full h-full object-cover"
               />
