@@ -203,7 +203,20 @@ app.post('/api/chat', async (req, res) => {
     return res.status(400).json({ error: 'Falta o es inválido el array "messages" en el cuerpo.' });
   }
 
-  const userMessage = messages[messages.length - 1]?.content || '';
+  const lastMessage = messages[messages.length - 1];
+  let userMessage = '';
+  let hasImage = false;
+
+  if (lastMessage) {
+    if (Array.isArray(lastMessage.content)) {
+      const textPart = lastMessage.content.find(p => p.type === 'text');
+      userMessage = textPart ? textPart.text : '';
+      hasImage = lastMessage.content.some(p => p.type === 'image_url');
+    } else {
+      userMessage = lastMessage.content || '';
+    }
+  }
+
   const cleanMsg = userMessage.toLowerCase().trim();
 
   // Detección de Intenciones para RAG

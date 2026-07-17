@@ -88,10 +88,10 @@ interface AppStateContextProps {
   mesas: Mesa[];
   toggleMesa: (id: number) => void;
   cafeteria: CafeteriaState;
-  triggerAIResponse: (userMessage: string) => Promise<string>;
-  chatHistory: Array<{ id: number; text: string; isUser: boolean; timestamp: string }>;
-  setChatHistory: React.Dispatch<React.SetStateAction<Array<{ id: number; text: string; isUser: boolean; timestamp: string }>>>;
-  addChatMessage: (text: string, isUser: boolean) => void;
+  triggerAIResponse: (userMessage: string, image?: string) => Promise<string>;
+  chatHistory: Array<{ id: number; text: string; isUser: boolean; timestamp: string; image?: string }>;
+  setChatHistory: React.Dispatch<React.SetStateAction<Array<{ id: number; text: string; isUser: boolean; timestamp: string; image?: string }>>>;
+  addChatMessage: (text: string, isUser: boolean, image?: string) => void;
   pendingProduct: Product | null;
   setPendingProduct: React.Dispatch<React.SetStateAction<Product | null>>;
 }
@@ -161,7 +161,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   // Chat History
-  const [chatHistory, setChatHistory] = useState<Array<{ id: number; text: string; isUser: boolean; timestamp: string }>>([
+  const [chatHistory, setChatHistory] = useState<Array<{ id: number; text: string; isUser: boolean; timestamp: string; image?: string }>>([
     {
       id: 1,
       text: '¡Hola! Soy Samira, tu asistente virtual de SmartCafé UTP 😊',
@@ -337,7 +337,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return `${strHours}:${strMinutes} ${ampm}`;
   };
 
-  const addChatMessage = (text: string, isUser: boolean) => {
+  const addChatMessage = (text: string, isUser: boolean, image?: string) => {
     setChatHistory((prev) => [
       ...prev,
       {
@@ -345,17 +345,40 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         text,
         isUser,
         timestamp: formatTime(),
+        image,
       },
     ]);
   };
 
-  const triggerAIResponse = async (userMessage: string): Promise<string> => {
+  const triggerAIResponse = async (userMessage: string, image?: string): Promise<string> => {
     try {
-      const formattedMessages = chatHistory.map((msg) => ({
-        role: msg.isUser ? 'user' : 'assistant',
-        content: msg.text,
-      }));
-      formattedMessages.push({ role: 'user', content: userMessage });
+      const formattedMessages = chatHistory.map((msg) => {
+        if (msg.image) {
+          return {
+            role: msg.isUser ? 'user' : 'assistant',
+            content: [
+              { type: 'text', text: msg.text },
+              { type: 'image_url', image_url: { url: msg.image } }
+            ]
+          };
+        }
+        return {
+          role: msg.isUser ? 'user' : 'assistant',
+          content: msg.text,
+        };
+      });
+
+      if (image) {
+        formattedMessages.push({
+          role: 'user',
+          content: [
+            { type: 'text', text: userMessage },
+            { type: 'image_url', image_url: { url: image } }
+          ]
+        });
+      } else {
+        formattedMessages.push({ role: 'user', content: userMessage });
+      }
 
       const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
       const response = await fetch(`${baseUrl}/api/chat`, {

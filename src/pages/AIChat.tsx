@@ -1,13 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Crown, Send, Coffee, BookOpen, Music, Heart, Sparkles } from 'lucide-react';
+import { ArrowLeft, Crown, Send, Coffee, BookOpen, Music, Heart, Sparkles, Image as ImageIcon, X } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import ImageWithFallback from '../components/figma/ImageWithFallback';
 
 export const AIChat: React.FC = () => {
   const { setRoute, chatHistory, addChatMessage, triggerAIResponse } = useAppState();
   const [inputText, setInputText] = useState('');
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-scroll to bottom of chat
   const scrollToBottom = () => {
@@ -18,17 +20,31 @@ export const AIChat: React.FC = () => {
     scrollToBottom();
   }, [chatHistory, isTyping]);
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSelectedImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSend = async (text: string) => {
-    if (!text.trim()) return;
+    if (!text.trim() && !selectedImage) return;
+    
+    const imageToSend = selectedImage || undefined;
     
     // Add user message
-    addChatMessage(text, true);
+    addChatMessage(text, true, imageToSend);
     setInputText('');
+    setSelectedImage(null);
     setIsTyping(true);
 
     try {
       // Trigger mockup AI response
-      const reply = await triggerAIResponse(text);
+      const reply = await triggerAIResponse(text, imageToSend);
       addChatMessage(reply, false);
     } catch (e) {
       console.error(e);
@@ -132,7 +148,12 @@ export const AIChat: React.FC = () => {
                     : 'bg-white text-gray-800 border-purple-100 rounded-tl-none'
                 }`}
               >
-                {msg.text.split('\n').map((line, i) => (
+                {msg.image && (
+                  <div className="mb-2 max-w-full rounded-lg overflow-hidden border border-black/10">
+                    <img src={msg.image} alt="User upload" className="max-h-48 object-contain w-full bg-black/5" />
+                  </div>
+                )}
+                {msg.text && msg.text.split('\n').map((line, i) => (
                   <p key={i} className={i > 0 ? 'mt-1' : ''}>{line}</p>
                 ))}
               </div>
@@ -190,8 +211,38 @@ export const AIChat: React.FC = () => {
           </div>
         )}
 
+        {/* Image Preview Block */}
+        {selectedImage && (
+          <div className="relative inline-block mt-1 p-1 bg-gray-50 rounded-xl border border-gray-200 max-w-[120px] shadow-sm">
+            <img src={selectedImage} alt="Preview" className="w-24 h-24 object-cover rounded-lg" />
+            <button
+              onClick={() => setSelectedImage(null)}
+              className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-md active-press"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
         {/* Input Bar */}
         <div className="flex gap-2 items-center">
+          {/* File selector input */}
+          <input
+            type="file"
+            accept="image/*"
+            ref={fileInputRef}
+            onChange={handleImageChange}
+            className="hidden"
+          />
+
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-10 h-10 rounded-full bg-purple-50 hover:bg-purple-100 text-purple-600 flex items-center justify-center transition-colors active-press border border-purple-100/50 shadow-sm"
+            title="Adjuntar imagen"
+          >
+            <ImageIcon size={18} />
+          </button>
+
           <div className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-4 py-2 flex items-center">
             <input
               type="text"
