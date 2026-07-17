@@ -325,9 +325,9 @@ app.post('/api/chat', async (req, res) => {
   try {
     console.log(`[Proxy] Enviando solicitud a LM Studio...`);
 
-    // Set a controller for timeout handling (e.g. 8 seconds)
+    // Set a controller for timeout handling (e.g. 30 seconds for vision/image processing)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     const response = await fetch('http://localhost:1234/v1/chat/completions', {
       method: 'POST',
@@ -357,8 +357,17 @@ app.post('/api/chat', async (req, res) => {
     console.warn(`[Proxy Fallback] No se pudo conectar con LM Studio: ${error.message}. Activando simulador local de Samira...`);
 
     // Local fallback generator (rule-based fallback when LM Studio is down)
-    const userMessage = messages[messages.length - 1]?.content || '';
-    const cleanMsg = userMessage.toLowerCase().trim();
+    const lastMsg = messages[messages.length - 1];
+    let userMsgText = '';
+    if (lastMsg) {
+      if (Array.isArray(lastMsg.content)) {
+        const textPart = lastMsg.content.find(p => p.type === 'text');
+        userMsgText = textPart ? textPart.text : '';
+      } else {
+        userMsgText = lastMsg.content || '';
+      }
+    }
+    const cleanMsg = userMsgText.toLowerCase().trim();
     let reply = '';
 
     if (cleanMsg.includes('disponible') || cleanMsg.includes('menu') || cleanMsg.includes('comida') || cleanMsg.includes('stock') || cleanMsg.includes('precio') || cleanMsg.includes('cafeteria')) {
