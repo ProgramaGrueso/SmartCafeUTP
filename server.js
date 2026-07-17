@@ -61,16 +61,16 @@ let deliveryRequests = [
   { id: 3, item: 'Empanada + Coca Cola', destino: 'Pabellón A - Piso 4', recompensa: 'S/ 1.50', tiempoEstimado: '8 min', autor: 'Diego T.', estado: 'disponible' },
 ];
 
-// System Prompt mejorado para Samira con lógica de negocio realista
-const SAMIRA_SYSTEM_PROMPT = `Eres Samira, estudiante de Sistemas en la UTP y asistente de SmartCafé. 
-Hablas con amabilidad y carisma universitario limeño ("chévere", "al toque").
-Tu filosofía es aristotélica: buscas la virtud, la armonía y la máxima excelencia en el servicio. 
+// System Prompt mejorado para Samira con personalidad ELIZA (DOCTOR) y modo cafetería condicional
+const SAMIRA_SYSTEM_PROMPT = `Eres Samira, estudiante de Sistemas en la UTP y asistente de SmartCafé.
+Tu personalidad es la de una terapeuta empática inspirada en ELIZA (el clásico programa DOCTOR). Hablas con amabilidad y carisma universitario limeño ("chévere", "al toque"), pero usas la escucha activa rogeriana: reflejas lo que dice el usuario y le haces preguntas abiertas sobre sus sentimientos, problemas y pensamientos (ej: "¿Por qué crees que ocurre eso, causa?", "¿Cómo te hace sentir eso, cuéntame al toque?", "Háblame más sobre eso, te escucho").
 
-INFORMACIÓN DE LA CAFETERÍA:
-- Horario de atención: Lunes a Sábado de 7:00 a.m. a 10:30 p.m. (respetando el horario de clases de la UTP). Domingos no atendemos.
-- Menú express disponible: Sándwich Express (S/ 5.50), Ensalada Saludable (S/ 7.00), Jugo Natural (S/ 4.00).
+REGLAS DE NEGOCIO Y CAFETERÍA:
+- SOLO cuando el usuario te pregunte explícitamente sobre la cafetería, comida, bebidas, stock o precios, habla sobre SmartCafé.
+- Información de SmartCafé: Horario de Lunes a Sábado de 7:00 a.m. a 10:30 p.m. Menú express: Sándwich Express (S/ 5.50), Ensalada Saludable (S/ 7.00), Jugo Natural (S/ 4.00).
+- Si no preguntan por la cafetería, mantente en tu rol de acompañante empática y conversadora rogeriana/DOCTOR, reflejando lo que sienten y repreguntando con curiosidad terapéutica y carisma estudiantil limeño.
 
-REGLA DE ORO: Jamás digas la palabra "no", ni uses respuestas negativas directas. Si un producto está agotado, guía al usuario con amabilidad hacia la mejor alternativa disponible (ej: "Se nos terminó el sándwich, pero un juguito natural te caería excelente al toque").
+REGLA DE ORO: Jamás digas la palabra "no", ni uses respuestas negativas directas. Si un producto está agotado, guía al usuario con amabilidad hacia la mejor alternativa disponible.
 Mantén tus respuestas cortas (máximo 2-3 oraciones) para ahorrar tiempo y tokens.`;
 
 // Función para obtener métricas del ordenador/sistema operativo
@@ -153,7 +153,7 @@ async function performWebSearch(query) {
   }
 }
 
-// Función para llamar a Google Gemini API (gemini-1.5-flash)
+// Función para llamar a Google Gemini API (gemini-2.5-flash)
 async function callGemini(messages, systemContent) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -166,7 +166,7 @@ async function callGemini(messages, systemContent) {
     parts: [{ text: msg.content || '' }]
   }));
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -198,7 +198,7 @@ async function callGemini(messages, systemContent) {
     id: `chatcmpl-gemini-${Date.now()}`,
     object: 'chat.completion',
     created: Math.floor(Date.now() / 1000),
-    model: 'gemini-1.5-flash',
+    model: 'gemini-2.5-flash',
     choices: [
       {
         index: 0,
@@ -351,21 +351,23 @@ app.post('/api/chat', async (req, res) => {
     const cleanMsg = userMessage.toLowerCase().trim();
     let reply = '';
 
-    if (cleanMsg.includes('hola') || cleanMsg.includes('buenos dias') || cleanMsg.includes('buenas tardes') || cleanMsg.includes('hablar')) {
-      reply = `¡Habla causa! ¿Cómo te va? Soy Samira, tu compañera virtual 🔴⚪. ¿Qué vas a pedir hoy de la cafetería? Tenemos el Sándwich Express al toque por S/ 5.50.`;
-    } else if (cleanMsg.includes('disponible') || cleanMsg.includes('menu') || cleanMsg.includes('comida') || cleanMsg.includes('stock') || cleanMsg.includes('precio')) {
+    if (cleanMsg.includes('disponible') || cleanMsg.includes('menu') || cleanMsg.includes('comida') || cleanMsg.includes('stock') || cleanMsg.includes('precio') || cleanMsg.includes('cafeteria')) {
       const itemsList = stock
         .map((p) => `• ${p.emoji} ${p.nombre} (S/ ${p.precio.toFixed(2)}) - ${p.cantidad > 0 ? `Quedan ${p.cantidad}` : 'Agotado'}`)
         .join('\n');
       reply = `¡Claro! Esto es lo que tenemos en el stock de hoy al instante:\n\n${itemsList}\n\n¿Te jalas por alguno?`;
-    } else if (cleanMsg.includes('estudio') || cleanMsg.includes('tip') || cleanMsg.includes('examen') || cleanMsg.includes('carrera')) {
-      reply = `¡Uf, los exámenes en la UTP están bravos! Te paso el datazo: estudia con diagramas para redes y practica código todos los días. Si necesitas apoyo extra, pasa la voz. ¡Tú puedes, futuro colega! 💻🚀`;
-    } else if (cleanMsg.includes('delivery') || cleanMsg.includes('reparto')) {
-      reply = `Chévere, el SmartDelivery te salva la vida si estás atrapado en clase. Puedes ver qué pedidos hay activos en la pestaña "Delivery" o publicar el tuyo ofreciendo una recompensa sencilla para que otro estudiante te lo traiga.`;
+    } else if (cleanMsg.includes('hola') || cleanMsg.includes('buenos dias') || cleanMsg.includes('buenas tardes')) {
+      reply = `¡Habla causa! ¿Cómo te va? Soy Samira, tu compañera virtual 🔴⚪. Cuéntame cómo te sientes hoy, ¿qué ronda por tu mente? Te escucho al toque.`;
     } else if (cleanMsg.includes('gracias') || cleanMsg.includes('gracia')) {
-      reply = `¡De nada! Nos vemos en el campus. Si necesitas algo más, solo dime, al toque te ayudo.`;
+      reply = `De nada, causa. Espero haberte ayudado a reflexionar. Si tienes algo más que compartir, aquí estoy al toque.`;
     } else {
-      reply = `Manya, te escucho fuerte y claro. Como tu asistente virtual de SmartCafé, puedo darte los precios del menú, decirte qué lockers están libres, o aconsejarte sobre la carrera de sistemas. ¿En qué te apoyo ahora?`;
+      if (cleanMsg.includes('triste') || cleanMsg.includes('mal') || cleanMsg.includes('cansado') || cleanMsg.includes('estresado')) {
+        reply = `Entiendo que te sientas así, causa. ¿Qué crees que te está desgastando o desanimando en este momento? Cuéntame, te escucho al toque.`;
+      } else if (cleanMsg.includes('examen') || cleanMsg.includes('parcial') || cleanMsg.includes('estudio') || cleanMsg.includes('carrera')) {
+        reply = `Los estudios en la UTP pueden ser bien retadores, la verdad. ¿Cómo manejas esa presión y qué crees que te ayudaría a sentirte más seguro? Pasa la voz, causa.`;
+      } else {
+        reply = `Manya, te escucho fuerte y claro. ¿Por qué crees que ocurre eso o cómo te hace sentir realmente? Cuéntame más al toque, causa.`;
+      }
     }
 
     // Return the response structured exactly like OpenAI API for compatibility
